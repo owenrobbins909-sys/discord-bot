@@ -55,10 +55,7 @@ ROBLOX_USERS = [
 
 CHECK_INTERVAL = 3
 
-# Roblox Rivals Universe ID
-RIVALS_UNIVERSE_ID = 5600755405
-
-# ===================== BOT SETUP =====================
+# ===================== BOT =====================
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -71,7 +68,7 @@ from discord import ui, ButtonStyle
 
 class JoinView(ui.View):
     def __init__(self, url):
-        super().__init__(timeout=None)
+        super().__init__()
 
         if url:
             self.add_item(
@@ -82,17 +79,17 @@ class JoinView(ui.View):
                 )
             )
 
-# ===================== MESSAGE SENDER =====================
+# ===================== MESSAGE =====================
 
-async def send_tracker_message(channel, username, display_name, server_id, place_id, joinable):
+async def send_message(channel, username, server_id, place_id, game_id):
     start = time.time()
 
     join_url = None
-    if joinable and server_id:
-        join_url = f"https://www.roblox.com/games/start?placeId={place_id}&gameInstanceId={server_id}"
+    if game_id:
+        join_url = f"https://www.roblox.com/games/start?placeId={place_id}&gameInstanceId={game_id}"
 
     text = f"""**Charm owner joined!**
-{display_name} (@{username}) joined server `{server_id or "Unknown"}`
+{username} joined server `{server_id or "Unknown"}`
 
 """
 
@@ -126,7 +123,7 @@ async def get_presence(session, user_id):
         data = await r.json()
         return data["userPresences"][0]
 
-# ===================== MONITOR LOOP =====================
+# ===================== MONITOR =====================
 
 async def monitor():
     await bot.wait_until_ready()
@@ -140,7 +137,7 @@ async def monitor():
 
         user_ids = {}
 
-        # safe lookup (prevents Roblox blocking)
+        # safe lookup
         for u in ROBLOX_USERS:
             try:
                 uid = await get_user_id(session, u)
@@ -154,9 +151,10 @@ async def monitor():
             except Exception as e:
                 print("Lookup error:", u, e)
 
-        print("Tracker started...")
+        print("Tracker running...")
 
         while not bot.is_closed():
+
             for username, user_id in user_ids.items():
                 try:
                     presence = await get_presence(session, user_id)
@@ -165,7 +163,6 @@ async def monitor():
                         continue
 
                     is_in_game = presence["userPresenceType"] == 2
-                    universe_id = presence.get("universeId")
 
                     key = username
 
@@ -173,29 +170,24 @@ async def monitor():
                         last_state[key] = False
                         continue
 
-                    # 🟢 JOIN RIVALS ONLY
-                    if (
-                        is_in_game
-                        and universe_id == RIVALS_UNIVERSE_ID
-                        and not last_state[key]
-                    ):
-                        await send_tracker_message(
+                    # 🟢 JOIN ANY GAME (reliable trigger)
+                    if is_in_game and not last_state[key]:
+                        await send_message(
                             channel,
                             username,
-                            username,
                             presence.get("gameId"),
-                            17625359962,
-                            presence.get("gameId") is not None
+                            presence.get("placeId"),
+                            presence.get("gameId")
                         )
 
                     # 🔴 LEAVE
                     if not is_in_game and last_state[key]:
                         await channel.send(f"🔴 **{username} left Roblox Rivals**")
 
-                    last_state[key] = is_in_game and universe_id == RIVALS_UNIVERSE_ID
+                    last_state[key] = is_in_game
 
                 except Exception as e:
-                    print(f"Error tracking {username}: {e}")
+                    print(f"Error {username}: {e}")
 
             await asyncio.sleep(CHECK_INTERVAL)
 
