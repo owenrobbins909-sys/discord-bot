@@ -13,44 +13,13 @@ ALLOWED_GUILD_ID = 1503294314955145246
 CHANNEL_ID = 1503294318469845076
 
 ROBLOX_USERS = [
-    "Nosniy",
-    "yr6aa",
-    "SenseiWarrior",
-    "nekoanims",
-    "CarbonMeister",
-    "Bandites",
-    "Blizmid",
-    "DVwastaken",
-    "TanqR",
-    "BobbVX",
-    "PixelCat5",
-    "SubToMiniBloxia",
-    "enriquebruv",
-    "chexworldwide",
-    "EHoopie",
-    "h0ppy819",
-    "ShadowTrojan",
-    "Brian1KB",
-    "GreatGuyBoom",
-    "swaglord_KAYE",
-    "Karfulol",
-    "Khxyri",
-    "viecti",
-    "SharkTactics",
-    "D_reamz",
-    "RealApplino",
-    "8sty",
-    "a2rix",
-    "philhood",
-    "DunkinMud",
-    "KaiMemory",
-    "AtDarktru",
-    "SniperDude9167",
-    "MiloBloxin",
-    "its_WE1RD",
-    "kashycod",
-    "ReallyCruz",
-    "StefanBloxxxxx"
+    "Nosniy","yr6aa","SenseiWarrior","nekoanims","CarbonMeister","Bandites",
+    "Blizmid","DVwastaken","TanqR","BobbVX","PixelCat5","SubToMiniBloxia",
+    "enriquebruv","chexworldwide","EHoopie","h0ppy819","ShadowTrojan",
+    "Brian1KB","GreatGuyBoom","swaglord_KAYE","Karfulol","Khxyri","viecti",
+    "SharkTactics","D_reamz","RealApplino","8sty","a2rix","philhood",
+    "DunkinMud","KaiMemory","AtDarktru","SniperDude9167","MiloBloxin",
+    "its_WE1RD","kashycod","ReallyCruz","StefanBloxxxxx"
 ]
 
 CHECK_INTERVAL = 3
@@ -103,9 +72,7 @@ async def send_message(channel, username, server_id, place_id, game_id):
     ms = int((time.time() - start) * 1000)
     text += f"\nFound in {ms} ms"
 
-    view = JoinView(join_url)
-
-    await channel.send(content=text, view=view)
+    await channel.send(content=text, view=JoinView(join_url))
 
 # ===================== ROBLOX API =====================
 
@@ -117,11 +84,19 @@ async def get_user_id(session, username):
             return None
         return data["data"][0]["id"]
 
+# 🔥 FIXED FUNCTION (THIS WAS YOUR ERROR)
 async def get_presence(session, user_id):
     url = "https://presence.roblox.com/v1/presence/users"
+
     async with session.post(url, json={"userIds": [user_id]}) as r:
         data = await r.json()
-        return data["userPresences"][0]
+
+        presences = data.get("userPresences")
+
+        if not presences or len(presences) == 0:
+            return None
+
+        return presences[0]
 
 # ===================== MONITOR =====================
 
@@ -162,7 +137,7 @@ async def monitor():
                     if not presence:
                         continue
 
-                    is_in_game = presence["userPresenceType"] == 2
+                    is_in_game = presence.get("userPresenceType") == 2
 
                     key = username
 
@@ -170,7 +145,7 @@ async def monitor():
                         last_state[key] = False
                         continue
 
-                    # 🟢 JOIN ANY GAME (reliable trigger)
+                    # 🟢 JOIN
                     if is_in_game and not last_state[key]:
                         await send_message(
                             channel,
@@ -187,7 +162,7 @@ async def monitor():
                     last_state[key] = is_in_game
 
                 except Exception as e:
-                    print(f"Error {username}: {e}")
+                    print(f"Error tracking {username}: {e}")
 
             await asyncio.sleep(CHECK_INTERVAL)
 
