@@ -2,18 +2,19 @@ import discord
 from discord.ext import commands
 import aiohttp
 import asyncio
+import os
+import time
 
 # ===================== CONFIG =====================
 
-import os
 TOKEN = os.getenv("TOKEN")
 
 ALLOWED_GUILD_ID = 1503294314955145246
 CHANNEL_ID = 1503294318469845076
 
 ROBLOX_USERS = [
-    "yr6aa",
     "Nosniy",
+    "yr6aa",
     "SenseiWarrior",
     "nekoanims",
     "CarbonMeister",
@@ -52,9 +53,10 @@ ROBLOX_USERS = [
     "StefanBloxxxxx"
 ]
 
-CHECK_INTERVAL = 3  # seconds (lower = faster but more risk of rate limits)
+CHECK_INTERVAL = 3
 
-RIVALS_PLACE_ID = 17625359962
+# Roblox Rivals Universe ID
+RIVALS_UNIVERSE_ID = 5600755405
 
 # ===================== BOT SETUP =====================
 
@@ -63,7 +65,52 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 last_state = {}
 
-# ===================== ROBLOX FUNCTIONS =====================
+# ===================== DISCORD VIEW =====================
+
+from discord import ui, ButtonStyle
+
+class JoinView(ui.View):
+    def __init__(self, url):
+        super().__init__(timeout=None)
+
+        if url:
+            self.add_item(
+                ui.Button(
+                    label="Join Server",
+                    style=ButtonStyle.link,
+                    url=url
+                )
+            )
+
+# ===================== MESSAGE SENDER =====================
+
+async def send_tracker_message(channel, username, display_name, server_id, place_id, joinable):
+    start = time.time()
+
+    join_url = None
+    if joinable and server_id:
+        join_url = f"https://www.roblox.com/games/start?placeId={place_id}&gameInstanceId={server_id}"
+
+    text = f"""**Charm owner joined!**
+{display_name} (@{username}) joined server `{server_id or "Unknown"}`
+
+"""
+
+    if join_url:
+        text += "🟢 This server is joinable\n"
+    else:
+        text += "❌ This place isn't joinable\n"
+
+    text += "ℹ️ Server name: Private Server\n"
+
+    ms = int((time.time() - start) * 1000)
+    text += f"\nFound in {ms} ms"
+
+    view = JoinView(join_url)
+
+    await channel.send(content=text, view=view)
+
+# ===================== ROBLOX API =====================
 
 async def get_user_id(session, username):
     url = "https://users.roblox.com/v1/usernames/users"
@@ -86,17 +133,28 @@ async def monitor():
 
     channel = bot.get_channel(CHANNEL_ID)
     if channel is None:
-        print("Channel not found. Check CHANNEL_ID.")
+        print("Channel not found")
         return
 
     async with aiohttp.ClientSession() as session:
 
-        # cache user IDs
         user_ids = {}
+
+        # safe lookup (prevents Roblox blocking)
         for u in ROBLOX_USERS:
-            uid = await get_user_id(session, u)
-            if uid:
-                user_ids[u] = uid
+            try:
+                uid = await get_user_id(session, u)
+                print("LOOKUP:", u, "->", uid)
+
+                if uid:
+                    user_ids[u] = uid
+
+                await asyncio.sleep(0.5)
+
+            except Exception as e:
+                print("Lookup error:", u, e)
+
+        print("Tracker started...")
 
         while not bot.is_closed():
             for username, user_id in user_ids.items():
@@ -107,41 +165,45 @@ async def monitor():
                         continue
 
                     is_in_game = presence["userPresenceType"] == 2
-                    place_id = presence.get("placeId")
+                    universe_id = presence.get("universeId")
 
                     key = username
 
                     if key not in last_state:
-                        last_state[key] = is_in_game
+                        last_state[key] = False
                         continue
 
-                    # JOINED RIVALS
-                    if is_in_game and not last_state[key]:
-                        if place_id == RIVALS_PLACE_ID:
-                            await channel.send(f"🟢 **{username} joined Roblox Rivals**")
+                    # 🟢 JOIN RIVALS ONLY
+                    if (
+                        is_in_game
+                        and universe_id == RIVALS_UNIVERSE_ID
+                        and not last_state[key]
+                    ):
+                        await send_tracker_message(
+                            channel,
+                            username,
+                            username,
+                            presence.get("gameId"),
+                            17625359962,
+                            presence.get("gameId") is not None
+                        )
 
-                    # LEFT GAME
+                    # 🔴 LEAVE
                     if not is_in_game and last_state[key]:
                         await channel.send(f"🔴 **{username} left Roblox Rivals**")
 
-                    last_state[key] = is_in_game
+                    last_state[key] = is_in_game and universe_id == RIVALS_UNIVERSE_ID
 
                 except Exception as e:
                     print(f"Error tracking {username}: {e}")
 
             await asyncio.sleep(CHECK_INTERVAL)
 
-# ===================== DISCORD EVENTS =====================
+# ===================== EVENTS =====================
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-
-    # server lock (your privacy requirement)
-    for guild in bot.guilds:
-        if guild.id != ALLOWED_GUILD_ID:
-            await guild.leave()
-
     bot.loop.create_task(monitor())
 
 @bot.event
@@ -149,6 +211,6 @@ async def on_guild_join(guild):
     if guild.id != ALLOWED_GUILD_ID:
         await guild.leave()
 
-# ===================== RUN BOT =====================
+# ===================== RUN =====================
 
 bot.run(TOKEN)
