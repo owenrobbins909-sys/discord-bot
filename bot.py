@@ -12,6 +12,7 @@ ALLOWED_GUILD_ID = 1503294314955145246
 CHANNEL_ID = 1503294318469845076
 
 ROBLOX_USERS = [
+    "yr6aa",
     "Nosniy",
     "SenseiWarrior",
     "nekoanims",
